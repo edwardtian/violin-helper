@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Violin Scale Pitch Trainer</title>
+  <style>
+    :root {
+      --bg: #f7f7f9;
+      --panel: #ffffff;
+      --text: #1f1f24;
+      --muted: #6b6b78;
+      --accent: #5b6cff;
+      --green: #1db954;
+      --yellow: #ffcc00;
+      --red: #ff3b30;
+      --blue: #007aff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 20px; font-size: 1.6rem; text-align: center; }
+    .controls {
+      background: var(--panel);
+      padding: 20px 24px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: center;
+      max-width: 900px;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+    select, input[type="number"], button {
+      font: inherit;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      outline: none;
+    }
+    select { min-width: 130px; }
+    input[type="number"] { width: 90px; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      min-width: 120px;
+      transition: transform .05s, background .2s;
+    }
+    button:hover { background: #4a59e6; }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .meter-card {
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 24px;
+      max-width: 900px;
+      width: 100%;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .meter-wrap { position: relative; width: 100%; max-width: 500px; margin: 0 auto; }
+    .meter-note {
+      font-size: 5rem;
+      font-weight: 800;
+      margin-top: 8px;
+      min-height: 6rem;
+      transition: color .15s;
+    }
+    .meter-note .cents {
+      display: block;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .notation-card {
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 20px 24px;
+      max-width: 900px;
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .notation-card h2 { margin: 0 0 12px; font-size: 1.1rem; color: var(--muted); }
+    #staff {
+      width: 100%;
+      height: 220px;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #eee;
+    }
+    .legend {
+      margin-top: 12px;
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 0.85rem;
+      color: var(--muted);
+      justify-content: center;
+    }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; }
+
+    /* Sessions */
+    .sessions-card {
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 20px 24px;
+      max-width: 900px;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .sessions-card h2 { margin: 0 0 12px; font-size: 1.1rem; color: var(--muted); }
+    .sessions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      background: #f7f7f9;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .session-item:hover { background: #ececf2; }
+    .session-name { font-weight: 600; }
+    .session-notes-count { font-size: 0.85rem; color: var(--muted); }
+    .empty-sessions { color: var(--muted); font-size: 0.9rem; text-align: center; padding: 16px; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: flex-start;
+      z-index: 1000;
+      padding: 40px 20px;
+      overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      width: 100%;
+      max-width: 960px;
+      position: relative;
+      padding: 24px;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-title { font-size: 1.25rem; font-weight: 700; margin: 0; }
+    .modal-close {
+      background: transparent;
+      color: var(--muted);
+      min-width: auto;
+      padding: 6px 12px;
+      font-size: 1.4rem;
+      line-height: 1;
+    }
+    .modal-close:hover { background: #f0f0f5; color: var(--text); }
+    .modal-staff-wrap {
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 12px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+    #modalStaff {
+      display: block;
+      min-width: 100%;
+      background: #fff;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: center;
+    }
+    .modal-delete {
+      background: var(--red);
+    }
+    .modal-delete:hover { background: #d63024; }
+
+    /* Tooltip */
+    .note-tooltip {
+      position: fixed;
+      background: rgba(31,31,36,0.9);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      pointer-events: none;
+      z-index: 1100;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity .1s;
+    }
+    .note-tooltip.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>Violin Scale Pitch Trainer</h1>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="scale">Scale</label>
+      <select id="scale">
+        <option value="C" selected>C Major</option>
+        <option value="D">D Major</option>
+        <option value="A">A Major</option>
+        <option value="Bb">B♭ Major</option>
+        <option value="G">G Major</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="speed">Speed (BPM)</label>
+      <input id="speed" type="number" value="60" min="20" max="240" disabled />
+    </div>
+    <div class="control-group">
+      <label for="tolerance">Tolerance (cents)</label>
+      <input id="tolerance" type="number" value="5" min="1" max="50" />
+    </div>
+    <div class="control-group">
+      <label for="sensitivity">Sensitivity</label>
+      <select id="sensitivity">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <button id="startBtn">Start Practice</button>
+  </div>
+
+  <div class="meter-card">
+    <div class="meter-wrap">
+      <svg id="meter" viewBox="0 0 320 170" preserveAspectRatio="xMidYMid meet">
+        <!-- colored zones -->
+        <g id="zones"></g>
+        <!-- ticks -->
+        <g id="ticks"></g>
+        <!-- needle -->
+        <g id="needle" transform="translate(160,150) rotate(0)">
+          <polygon points="-3,0 0,-110 3,0" fill="#333" />
+          <circle cx="0" cy="0" r="8" fill="#333" />
+        </g>
+      </svg>
+    </div>
+    <div class="meter-note" id="currentNote">--
+      <span class="cents" id="centsText">waiting for sound…</span>
+    </div>
+  </div>
+
+  <div class="notation-card">
+    <h2>Detected Notes</h2>
+    <svg id="staff" viewBox="0 0 900 220" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--green)"></span>In tune (≤ tolerance)</span>
+      <span><span class="dot" style="background:var(--red)"></span>Sharp</span>
+      <span><span class="dot" style="background:var(--blue)"></span>Flat</span>
+    </div>
+  </div>
+
+  <div class="sessions-card">
+    <h2>Practice Sessions</h2>
+    <div class="sessions-list" id="sessionsList">
+      <div class="empty-sessions">No sessions yet. Start practicing to record one.</div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">Session</h3>
+        <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-staff-wrap">
+        <svg id="modalStaff" viewBox="0 0 900 220" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-delete" id="modalDelete">Delete Session</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note-tooltip" id="noteTooltip"></div>
+
+  <script>
+    const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const MAJOR_SEMITONES = [0, 2, 4, 5, 7, 9, 11];
+
+    const SCALE_ROOTS = {
+      C: { midiBase: 60, accidentals: [] },
+      D: { midiBase: 62, accidentals: ['F#','C#'] },
+      A: { midiBase: 57, accidentals: ['F#','C#','G#'] },
+      Bb: { midiBase: 58, accidentals: ['Bb','Eb'] },
+      G: { midiBase: 55, accidentals: ['F#'] }
+    };
+
+    function getScaleNotes(scaleKey) {
+      const root = SCALE_ROOTS[scaleKey].midiBase;
+      const notes = [];
+      for (let oct = -1; oct <= 8; oct++) {
+        for (const st of MAJOR_SEMITONES) {
+          notes.push(root + oct * 12 + st);
+        }
+      }
+      return notes.sort((a,b)=>a-b);
+    }
+
+    function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+    function freqToMidi(f) { return 69 + 12 * Math.log2(f / 440); }
+    function midiToNoteName(midi) {
+      const pc = Math.round(midi) % 12;
+      const oct = Math.floor(Math.round(midi) / 12) - 1;
+      return NOTE_NAMES[(pc + 12) % 12] + oct;
+    }
+
+    function nearestScaleNote(midi, scaleKey) {
+      const scale = getScaleNotes(scaleKey);
+      let best = scale[0];
+      let bestD = Infinity;
+      for (const s of scale) {
+        const d = Math.abs(s - midi);
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      const cents = 100 * (midi - best);
+      return { midi: best, cents, name: midiToNoteName(best) };
+    }
+
+    function displayName(scaleKey, name) {
+      const accidentals = SCALE_ROOTS[scaleKey].accidentals;
+      const base = name.slice(0, -1);
+      const oct = name.slice(-1);
+      const enharmonics = {
+        'C#': 'Db', 'Db': 'C#', 'D#': 'Eb', 'Eb': 'D#', 'F#': 'Gb', 'Gb': 'F#',
+        'G#': 'Ab', 'Ab': 'G#', 'A#': 'Bb', 'Bb': 'A#'
+      };
+      if (accidentals.includes(base)) return base + oct;
+      if (accidentals.includes(enharmonics[base])) return enharmonics[base] + oct;
+      return base + oct;
+    }
+
+    // Meter drawing
+    const meterSvg = document.getElementById('meter');
+    const ticksGroup = document.getElementById('ticks');
+    const center = { x: 160, y: 150 }, radius = 120;
+    function angleForCents(cents) {
+      const maxCents = 40;
+      const clamped = Math.max(-maxCents, Math.min(maxCents, cents));
+      return (clamped / maxCents) * 90; // -90 left (negative), 0 up, +90 right (positive)
+    }
+    function polar(cx, cy, r, deg) {
+      const rad = (deg - 90) * Math.PI / 180;
+      return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+    }
+    function arcPath(startDeg, endDeg) {
+      const p1 = polar(center.x, center.y, radius - 6, startDeg);
+      const p2 = polar(center.x, center.y, radius - 6, endDeg);
+      const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+      return `M ${p1.x} ${p1.y} A ${radius - 6} ${radius - 6} 0 ${largeArc} 1 ${p2.x} ${p2.y}`;
+    }
+
+    // Draw colored meter zones
+    const zonesGroup = document.getElementById('zones');
+    const ZONE_WIDTH = 12;
+    const ZONES = [
+      { from: -40, to: -20, color: 'var(--red)' },
+      { from: -20, to: -5,  color: 'var(--yellow)' },
+      { from: -5,  to: 5,   color: 'var(--green)' },
+      { from: 5,   to: 20,  color: 'var(--yellow)' },
+      { from: 20,  to: 40,  color: 'var(--red)' }
+    ];
+    ZONES.forEach(z => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', arcPath(angleForCents(z.from), angleForCents(z.to)));
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', z.color);
+      path.setAttribute('stroke-width', ZONE_WIDTH);
+      path.setAttribute('stroke-linecap', 'butt');
+      zonesGroup.appendChild(path);
+    });
+
+    const TICKS = [-30, -20, -10, -5, 0, 5, 10, 20, 30];
+    TICKS.forEach(c => {
+      const a = angleForCents(c);
+      const p1 = polar(center.x, center.y, radius - 6, a);
+      const p2 = polar(center.x, center.y, radius + 6, a);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
+      line.setAttribute('x2', p2.x); line.setAttribute('y2', p2.y);
+      line.setAttribute('stroke', c === 0 ? '#333' : '#999');
+      line.setAttribute('stroke-width', c === 0 ? 3 : 2);
+      ticksGroup.appendChild(line);
+
+      const pt = polar(center.x, center.y, radius + 20, a);
+      const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+      text.setAttribute('x', pt.x); text.setAttribute('y', pt.y);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('fill', '#666');
+      text.textContent = (c > 0 ? '+' : '') + c;
+      ticksGroup.appendChild(text);
+    });
+    // outer labels
+    [-40, 40].forEach(c => {
+      const a = angleForCents(c);
+      const pt = polar(center.x, center.y, radius + 20, a);
+      const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+      text.setAttribute('x', pt.x); text.setAttribute('y', pt.y);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('fill', '#666');
+      text.textContent = (c > 0 ? '+' : '') + c;
+      ticksGroup.appendChild(text);
+    });
+
+    // Staff notation
+    const staffSvg = document.getElementById('staff');
+    const modalStaffSvg = document.getElementById('modalStaff');
+    const STAFF_TOP = 70, LINE_GAP = 14;
+    const LETTER_POS = { C: 0, D: 1, E: 2, F: 3, G: 4, A: 5, B: 6 };
+
+    function notePosition(name) {
+      // name e.g. "C#4", "Bb3". Returns staff position (line/space index).
+      // Position 10 = top line (F5), 2 = bottom line (E4), 0 = first ledger below (C4).
+      const letter = name[0];
+      const octave = parseInt(name.slice(-1));
+      const base = LETTER_POS[letter] ?? 0;
+      return base + 7 * (octave - 4);
+    }
+
+    function noteYFromName(name) {
+      const pos = notePosition(name);
+      return STAFF_TOP + (10 - pos) * 7;
+    }
+
+    function drawStaff(svg) {
+      svg.innerHTML = '';
+      const width = parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
+      for (let i = 0; i < 5; i++) {
+        const y = STAFF_TOP + i * LINE_GAP;
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', 20); line.setAttribute('y1', y);
+        line.setAttribute('x2', width - 20); line.setAttribute('y2', y);
+        line.setAttribute('stroke', '#bbb');
+        line.setAttribute('stroke-width', 1.5);
+        svg.appendChild(line);
+      }
+      // treble clef
+      const clef = document.createElementNS('http://www.w3.org/2000/svg','text');
+      clef.setAttribute('x', 32); clef.setAttribute('y', 110);
+      clef.setAttribute('font-size', '66');
+      clef.setAttribute('fill', '#333');
+      clef.textContent = '𝄞';
+      svg.appendChild(clef);
+    }
+    drawStaff(staffSvg);
+
+    const NOTE_HISTORY = [];
+    const MAX_HISTORY = 28;
+
+    function renderNoteArray(svg, notes, options = {}) {
+      const { interactive = false, onHover = null } = options;
+      const startX = 86;
+      const gap = 36;
+      const width = Math.max(900, startX + notes.length * gap + 60);
+
+      // Dynamic viewBox height to fit all notes (including stems) with padding
+      let minY = STAFF_TOP - 40;
+      let maxY = STAFF_TOP + 4 * LINE_GAP + 40;
+      if (notes.length > 0) {
+        const ys = notes.map(n => noteYFromName(n.shownName || midiToNoteName(n.midi)));
+        const stemReach = 35;
+        minY = Math.min(minY, ...ys.map(y => y - stemReach));
+        maxY = Math.max(maxY, ...ys.map(y => y + stemReach));
+      }
+      minY -= 20;
+      maxY += 20;
+      const height = Math.max(220, maxY - minY);
+      svg.setAttribute('viewBox', `0 ${minY} ${width} ${height}`);
+      drawStaff(svg);
+
+      notes.forEach((entry, i) => {
+        const x = startX + i * gap;
+        const name = entry.shownName || midiToNoteName(entry.midi);
+        const y = noteYFromName(name);
+        const pos = notePosition(name);
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        if (interactive) {
+          g.style.cursor = 'pointer';
+          g.addEventListener('mouseenter', () => onHover && onHover(entry, g));
+          g.addEventListener('mouseleave', () => onHover && onHover(null, g));
+        }
+
+        // ledger lines: only when the note sits on a line position outside the staff
+        if (pos % 2 === 0 && (pos < 2 || pos > 10)) {
+          const ll = document.createElementNS('http://www.w3.org/2000/svg','line');
+          ll.setAttribute('x1', x - 12); ll.setAttribute('y1', y);
+          ll.setAttribute('x2', x + 12); ll.setAttribute('y2', y);
+          ll.setAttribute('stroke', '#bbb');
+          ll.setAttribute('stroke-width', 1.5);
+          g.appendChild(ll);
+        }
+
+        // note head (ellipse)
+        const ellipse = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+        ellipse.setAttribute('cx', x); ellipse.setAttribute('cy', y);
+        ellipse.setAttribute('rx', 7.5); ellipse.setAttribute('ry', 5.5);
+        ellipse.setAttribute('fill', entry.color);
+        ellipse.setAttribute('transform', `rotate(-15, ${x}, ${y})`);
+        g.appendChild(ellipse);
+
+        // stem (down for high notes, up for low notes)
+        const stemUp = y > 98;
+        const stemX = x + (stemUp ? -7 : 7);
+        const stemEndY = y + (stemUp ? 35 : -35);
+        const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
+        stem.setAttribute('x1', stemX); stem.setAttribute('y1', y);
+        stem.setAttribute('x2', stemX); stem.setAttribute('y2', stemEndY);
+        stem.setAttribute('stroke', entry.color);
+        stem.setAttribute('stroke-width', 2);
+        g.appendChild(stem);
+
+        // accidental
+        if (entry.accidental) {
+          const acc = document.createElementNS('http://www.w3.org/2000/svg','text');
+          acc.setAttribute('x', x - 22); acc.setAttribute('y', y + 5);
+          acc.setAttribute('font-size', '16');
+          acc.setAttribute('fill', entry.color);
+          acc.textContent = entry.accidental;
+          g.appendChild(acc);
+        }
+
+        svg.appendChild(g);
+      });
+    }
+
+    function renderNotes() {
+      renderNoteArray(staffSvg, NOTE_HISTORY);
+    }
+
+    function accidentalSymbol(name) {
+      if (name.includes('#')) return '♯';
+      if (name.includes('b')) return '♭';
+      return '';
+    }
+
+    // Pitch detection (autocorrelation)
+    let audioCtx, analyser, mediaStream, source, rafId;
+    let isRunning = false;
+    const buflen = 2048;
+    let buf = new Float32Array(buflen);
+    let MIN_RMS = 0.005;
+    let HOLD_THRESHOLD = 6;
+
+    const SENSITIVITY_SETTINGS = {
+      low:    { MIN_RMS: 0.015, HOLD_THRESHOLD: 12 },
+      medium: { MIN_RMS: 0.005, HOLD_THRESHOLD: 6 },
+      high:   { MIN_RMS: 0.002, HOLD_THRESHOLD: 3 }
+    };
+
+    const sensitivitySelect = document.getElementById('sensitivity');
+    function updateSensitivity() {
+      const s = SENSITIVITY_SETTINGS[sensitivitySelect.value] || SENSITIVITY_SETTINGS.medium;
+      MIN_RMS = s.MIN_RMS;
+      HOLD_THRESHOLD = s.HOLD_THRESHOLD;
+    }
+    updateSensitivity();
+    sensitivitySelect.addEventListener('change', updateSensitivity);
+
+    function autoCorrelate(buf, sampleRate) {
+      let rms = 0;
+      for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / buf.length);
+      if (rms < MIN_RMS) return -1;
+
+      let r1 = 0, r2 = buf.length - 1, thres = 0.2;
+      for (let i = 0; i < buf.length / 2; i++) {
+        if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+      }
+      for (let i = 1; i < buf.length / 2; i++) {
+        if (Math.abs(buf[buf.length - i]) < thres) { r2 = buf.length - i; break; }
+      }
+      const buf2 = buf.slice(r1, r2);
+      const c = new Array(buf2.length).fill(0);
+      for (let i = 0; i < buf2.length; i++) {
+        for (let j = 0; j < buf2.length - i; j++) {
+          c[i] += buf2[j] * buf2[j + i];
+        }
+      }
+      let d = 0;
+      while (d + 1 < c.length && c[d] > c[d + 1]) d++;
+      let maxval = -1, maxpos = -1;
+      for (let i = d; i < buf2.length; i++) {
+        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+      }
+      let T0 = maxpos;
+      if (T0 <= 0 || T0 + 1 >= c.length) return sampleRate / T0;
+      const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+      const a = (x1 + x3 - 2 * x2) / 2;
+      const b = (x3 - x1) / 2;
+      if (a) T0 = T0 - b / (2 * a);
+      return sampleRate / T0;
+    }
+
+    const startBtn = document.getElementById('startBtn');
+    const scaleSelect = document.getElementById('scale');
+    const speedInput = document.getElementById('speed');
+    const toleranceInput = document.getElementById('tolerance');
+    const needle = document.getElementById('needle');
+    const currentNoteEl = document.getElementById('currentNote');
+    const centsTextEl = document.getElementById('centsText');
+
+    let lastNote = null;
+    let noteHoldFrames = 0;
+
+    function update() {
+      if (!isRunning) return;
+      analyser.getFloatTimeDomainData(buf);
+      const freq = autoCorrelate(buf, audioCtx.sampleRate);
+
+      if (freq > 0) {
+        const midi = freqToMidi(freq);
+        const scaleKey = scaleSelect.value;
+        const noteInfo = nearestScaleNote(midi, scaleKey);
+        const absCents = Math.abs(noteInfo.cents);
+        const tolerance = parseFloat(toleranceInput.value) || 5;
+
+        // Meter color: green center, yellow middle, red outer
+        let meterColor;
+        if (absCents <= 5) meterColor = 'var(--green)';
+        else if (absCents <= 20) meterColor = 'var(--yellow)';
+        else meterColor = 'var(--red)';
+
+        // Notation color: green in tune, red sharp, blue flat
+        let noteColor;
+        if (absCents <= tolerance) noteColor = 'var(--green)';
+        else if (noteInfo.cents > tolerance) noteColor = 'var(--red)';
+        else noteColor = 'var(--blue)';
+
+        // Smooth note: only add when stable
+        if (lastNote && lastNote.name === noteInfo.name && Math.abs(lastNote.cents - noteInfo.cents) < 15) {
+          noteHoldFrames++;
+        } else {
+          lastNote = { name: noteInfo.name, cents: noteInfo.cents, midi: noteInfo.midi };
+          noteHoldFrames = 0;
+        }
+
+        if (noteHoldFrames === HOLD_THRESHOLD) {
+          const shownName = displayName(scaleKey, noteInfo.name);
+          const entry = {
+            midi: noteInfo.midi,
+            cents: noteInfo.cents,
+            color: noteColor,
+            accidental: accidentalSymbol(shownName),
+            shownName
+          };
+          NOTE_HISTORY.push(entry);
+          if (NOTE_HISTORY.length > MAX_HISTORY) NOTE_HISTORY.shift();
+          renderNotes();
+          if (currentSession) {
+            currentSession.notes.push({
+              ...entry,
+              timeOffset: Date.now() - currentSession.startTime
+            });
+          }
+        }
+
+        // Meter
+        const angle = angleForCents(noteInfo.cents);
+        needle.setAttribute('transform', `translate(160,150) rotate(${angle})`);
+
+        // Big note
+        const shownName = displayName(scaleKey, noteInfo.name);
+        currentNoteEl.innerHTML = shownName + '<span class="cents">' + (noteInfo.cents >= 0 ? '+' : '') + noteInfo.cents.toFixed(1) + ' cents</span>';
+        currentNoteEl.style.color = meterColor;
+      } else {
+        needle.setAttribute('transform', `translate(160,150) rotate(0)`);
+        currentNoteEl.innerHTML = '--<span class="cents">waiting for sound…</span>';
+        currentNoteEl.style.color = 'var(--text)';
+      }
+
+      rafId = requestAnimationFrame(update);
+    }
+
+    // Session recording & storage
+    let currentSession = null;
+    const SESSIONS_KEY = 'violin_pitch_sessions';
+
+    function formatDuration(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function formatSessionName(startTime, durationMs) {
+      const y = startTime.getFullYear();
+      const mo = String(startTime.getMonth() + 1).padStart(2, '0');
+      const d = String(startTime.getDate()).padStart(2, '0');
+      const h = String(startTime.getHours()).padStart(2, '0');
+      const mi = String(startTime.getMinutes()).padStart(2, '0');
+      const s = String(startTime.getSeconds()).padStart(2, '0');
+      return `${y}-${mo}-${d} ${h}:${mi}:${s} ~ ${formatDuration(durationMs)}`;
+    }
+
+    function loadSessions() {
+      try {
+        return JSON.parse(localStorage.getItem(SESSIONS_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveSessions(sessions) {
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    }
+
+    function addSession(session) {
+      const sessions = loadSessions();
+      sessions.unshift(session);
+      saveSessions(sessions);
+      renderSessionsList();
+    }
+
+    function deleteSession(id) {
+      if (!confirm('Are you sure you want to delete this session?')) return;
+      const sessions = loadSessions().filter(s => s.id !== id);
+      saveSessions(sessions);
+      closeModal();
+      renderSessionsList();
+    }
+
+    function startSession() {
+      currentSession = {
+        id: Date.now().toString(),
+        startTime: Date.now(),
+        startDate: new Date().toISOString(),
+        scale: scaleSelect.value,
+        notes: []
+      };
+    }
+
+    function endSession() {
+      if (!currentSession) return;
+      const endTime = Date.now();
+      const duration = endTime - currentSession.startTime;
+      currentSession.endTime = endTime;
+      currentSession.duration = duration;
+      currentSession.name = formatSessionName(new Date(currentSession.startTime), duration);
+      addSession(currentSession);
+      currentSession = null;
+    }
+
+    // Sessions list UI
+    const sessionsListEl = document.getElementById('sessionsList');
+    function renderSessionsList() {
+      const sessions = loadSessions();
+      sessionsListEl.innerHTML = '';
+      if (sessions.length === 0) {
+        sessionsListEl.innerHTML = '<div class="empty-sessions">No sessions yet. Start practicing to record one.</div>';
+        return;
+      }
+      sessions.forEach(session => {
+        const item = document.createElement('div');
+        item.className = 'session-item';
+        item.innerHTML = `
+          <span class="session-name">${escapeHtml(session.name)}</span>
+          <span class="session-notes-count">${session.notes.length} notes</span>
+        `;
+        item.addEventListener('click', () => openSessionModal(session));
+        sessionsListEl.appendChild(item);
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Modal
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalClose = document.getElementById('modalClose');
+    const modalDelete = document.getElementById('modalDelete');
+    const noteTooltip = document.getElementById('noteTooltip');
+    let currentModalSessionId = null;
+
+    function openSessionModal(session) {
+      currentModalSessionId = session.id;
+      modalTitle.textContent = session.name;
+      modalStaffSvg.setAttribute('viewBox', '0 0 900 220');
+      renderNoteArray(modalStaffSvg, session.notes, {
+        interactive: true,
+        onHover: (entry, g) => {
+          if (!entry) {
+            noteTooltip.classList.remove('visible');
+            return;
+          }
+          const rect = g.getBoundingClientRect();
+          noteTooltip.innerHTML = `
+            <strong>${escapeHtml(entry.shownName)}</strong><br>
+            ${entry.cents >= 0 ? '+' : ''}${entry.cents.toFixed(1)} cents
+            (${entry.cents > 0 ? 'sharp' : entry.cents < 0 ? 'flat' : 'in tune'})
+          `;
+          noteTooltip.style.left = (rect.left + rect.width / 2 - noteTooltip.offsetWidth / 2) + 'px';
+          noteTooltip.style.top = (rect.top - noteTooltip.offsetHeight - 8) + 'px';
+          noteTooltip.classList.add('visible');
+        }
+      });
+      modalOverlay.classList.add('open');
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      noteTooltip.classList.remove('visible');
+      currentModalSessionId = null;
+    }
+
+    modalClose.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+    modalDelete.addEventListener('click', () => {
+      if (currentModalSessionId) deleteSession(currentModalSessionId);
+    });
+
+    renderSessionsList();
+
+    startBtn.addEventListener('click', async () => {
+      if (isRunning) {
+        isRunning = false;
+        cancelAnimationFrame(rafId);
+        if (audioCtx) audioCtx.close();
+        if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+        startBtn.textContent = 'Start Practice';
+        endSession();
+        return;
+      }
+
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: {
+          echoCancellation: false, autoGainControl: false, noiseSuppression: false
+        }});
+        source = audioCtx.createMediaStreamSource(mediaStream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = buflen;
+        source.connect(analyser);
+        buf = new Float32Array(analyser.fftSize);
+        isRunning = true;
+        startBtn.textContent = 'Stop Practice';
+        NOTE_HISTORY.length = 0;
+        renderNotes();
+        startSession();
+        update();
+      } catch (err) {
+        alert('Microphone access required: ' + err.message);
+      }
+    });
+  </script>
+</body>
+</html>
