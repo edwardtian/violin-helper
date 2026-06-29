@@ -573,6 +573,108 @@
       renderNoteArray(staffSvg, NOTE_HISTORY);
     }
 
+    function renderMultiLineSheet(svg, notes, options = {}) {
+      const { interactive = false, onHover = null } = options;
+      const lineWidth = 900;
+      const startX = 86;
+      const gap = 36;
+      const endMargin = 40;
+      const notesPerLine = Math.max(1, Math.floor((lineWidth - startX - endMargin) / gap));
+      const lineHeight = 220;
+      const lines = Math.max(1, Math.ceil(notes.length / notesPerLine));
+      const height = lines * lineHeight + 40;
+
+      svg.setAttribute('viewBox', `0 0 ${lineWidth} ${height}`);
+      svg.innerHTML = '';
+
+      function renderNoteOnGroup(group, entry, x, y, pos) {
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        if (interactive) {
+          g.style.cursor = 'pointer';
+          g.addEventListener('mouseenter', () => onHover && onHover(entry, g));
+          g.addEventListener('mouseleave', () => onHover && onHover(null, g));
+        }
+
+        // ledger lines
+        if (pos % 2 === 0 && (pos < 2 || pos > 10)) {
+          const ll = document.createElementNS('http://www.w3.org/2000/svg','line');
+          ll.setAttribute('x1', x - 12); ll.setAttribute('y1', y);
+          ll.setAttribute('x2', x + 12); ll.setAttribute('y2', y);
+          ll.setAttribute('stroke', '#bbb');
+          ll.setAttribute('stroke-width', 1.5);
+          g.appendChild(ll);
+        }
+
+        // note head
+        const ellipse = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+        ellipse.setAttribute('cx', x); ellipse.setAttribute('cy', y);
+        ellipse.setAttribute('rx', 7.5); ellipse.setAttribute('ry', 5.5);
+        ellipse.setAttribute('fill', entry.color);
+        ellipse.setAttribute('transform', `rotate(-15, ${x}, ${y})`);
+        g.appendChild(ellipse);
+
+        // stem
+        const stemUp = y > 98;
+        const stemX = x + (stemUp ? -7 : 7);
+        const stemEndY = y + (stemUp ? 35 : -35);
+        const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
+        stem.setAttribute('x1', stemX); stem.setAttribute('y1', y);
+        stem.setAttribute('x2', stemX); stem.setAttribute('y2', stemEndY);
+        stem.setAttribute('stroke', entry.color);
+        stem.setAttribute('stroke-width', 2);
+        g.appendChild(stem);
+
+        // accidental
+        if (entry.accidental) {
+          const acc = document.createElementNS('http://www.w3.org/2000/svg','text');
+          acc.setAttribute('x', x - 22); acc.setAttribute('y', y + 5);
+          acc.setAttribute('font-size', '16');
+          acc.setAttribute('fill', entry.color);
+          acc.textContent = entry.accidental;
+          g.appendChild(acc);
+        }
+
+        group.appendChild(g);
+      }
+
+      for (let line = 0; line < lines; line++) {
+        const offsetY = line * lineHeight;
+        const group = document.createElementNS('http://www.w3.org/2000/svg','g');
+        group.setAttribute('transform', `translate(0, ${offsetY})`);
+
+        // staff lines
+        for (let i = 0; i < 5; i++) {
+          const y = STAFF_TOP + i * LINE_GAP;
+          const lineEl = document.createElementNS('http://www.w3.org/2000/svg','line');
+          lineEl.setAttribute('x1', 20); lineEl.setAttribute('y1', y);
+          lineEl.setAttribute('x2', lineWidth - 20); lineEl.setAttribute('y2', y);
+          lineEl.setAttribute('stroke', '#bbb');
+          lineEl.setAttribute('stroke-width', 1.5);
+          group.appendChild(lineEl);
+        }
+
+        // clef
+        const clef = document.createElementNS('http://www.w3.org/2000/svg','text');
+        clef.setAttribute('x', 32); clef.setAttribute('y', 110);
+        clef.setAttribute('font-size', '66');
+        clef.setAttribute('fill', '#333');
+        clef.textContent = '𝄞';
+        group.appendChild(clef);
+
+        // notes for this line
+        const lineNotes = notes.slice(line * notesPerLine, (line + 1) * notesPerLine);
+        lineNotes.forEach((entry, i) => {
+          const x = startX + i * gap;
+          const name = entry.shownName || midiToNoteName(entry.midi);
+          const y = noteYFromName(name);
+          const pos = notePosition(name);
+          renderNoteOnGroup(group, entry, x, y, pos);
+        });
+
+        svg.appendChild(group);
+      }
+    }
+
     function accidentalSymbol(name) {
       if (name.includes('#')) return '♯';
       if (name.includes('b')) return '♭';
@@ -825,8 +927,7 @@
     function openSessionModal(session) {
       currentModalSessionId = session.id;
       modalTitle.textContent = session.name;
-      modalStaffSvg.setAttribute('viewBox', '0 0 900 220');
-      renderNoteArray(modalStaffSvg, session.notes, {
+      renderMultiLineSheet(modalStaffSvg, session.notes, {
         interactive: true,
         onHover: (entry, g) => {
           if (!entry) {
