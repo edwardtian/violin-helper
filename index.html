@@ -66,6 +66,8 @@
     button:hover { background: #4a59e6; }
     button:active { transform: scale(0.97); }
     button:disabled { opacity: .6; cursor: not-allowed; }
+    button.calibrate { background: #34c759; }
+    button.calibrate:hover { background: #30b350; }
     .meter-card {
       background: var(--panel);
       border-radius: 16px;
@@ -250,7 +252,7 @@
     </div>
     <div class="control-group">
       <label for="tolerance">Tolerance (cents)</label>
-      <input id="tolerance" type="number" value="5" min="1" max="50" />
+      <input id="tolerance" type="number" value="5" min="5" max="15" />
     </div>
     <div class="control-group">
       <label for="sensitivity">Sensitivity</label>
@@ -258,9 +260,11 @@
         <option value="low">Low</option>
         <option value="medium" selected>Medium</option>
         <option value="high">High</option>
+        <option value="custom" disabled>Custom (calibrated)</option>
       </select>
     </div>
     <button id="startBtn">Start Practice</button>
+    <button id="calibrateBtn" class="calibrate">Calibrate</button>
   </div>
 
   <div class="meter-card">
@@ -287,8 +291,9 @@
     <svg id="staff" viewBox="0 0 900 220" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="legend">
       <span><span class="dot" style="background:var(--green)"></span>In tune (≤ tolerance)</span>
-      <span><span class="dot" style="background:var(--red)"></span>Sharp</span>
-      <span><span class="dot" style="background:var(--blue)"></span>Flat</span>
+      <span><span class="dot" style="background:var(--yellow)"></span>Off (tolerance–20 cents)</span>
+      <span><span class="dot" style="background:var(--red)"></span>Way off (>20 cents)</span>
+      <span>+ / − shown when out of tolerance</span>
     </div>
   </div>
 
@@ -372,6 +377,13 @@
       return base + oct;
     }
 
+    // UI references
+    const startBtn = document.getElementById('startBtn');
+    const calibrateBtn = document.getElementById('calibrateBtn');
+    const scaleSelect = document.getElementById('scale');
+    const speedInput = document.getElementById('speed');
+    const toleranceInput = document.getElementById('tolerance');
+
     // Meter drawing
     const meterSvg = document.getElementById('meter');
     const ticksGroup = document.getElementById('ticks');
@@ -386,31 +398,44 @@
       return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
     }
     function arcPath(startDeg, endDeg) {
-      const p1 = polar(center.x, center.y, radius - 6, startDeg);
-      const p2 = polar(center.x, center.y, radius - 6, endDeg);
+      const p1 = polar(center.x, center.y, radius, startDeg);
+      const p2 = polar(center.x, center.y, radius, endDeg);
       const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
-      return `M ${p1.x} ${p1.y} A ${radius - 6} ${radius - 6} 0 ${largeArc} 1 ${p2.x} ${p2.y}`;
+      return `M ${p1.x} ${p1.y} A ${radius} ${radius} 0 ${largeArc} 1 ${p2.x} ${p2.y}`;
     }
 
-    // Draw colored meter zones
+    // Meter color helper
+    function getMeterColor(cents, tolerance) {
+      const abs = Math.abs(cents);
+      if (abs <= tolerance) return 'var(--green)';
+      if (abs <= 20) return 'var(--yellow)';
+      return 'var(--red)';
+    }
+
+    // Draw colored meter zones based on tolerance
     const zonesGroup = document.getElementById('zones');
     const ZONE_WIDTH = 12;
-    const ZONES = [
-      { from: -40, to: -20, color: 'var(--red)' },
-      { from: -20, to: -5,  color: 'var(--yellow)' },
-      { from: -5,  to: 5,   color: 'var(--green)' },
-      { from: 5,   to: 20,  color: 'var(--yellow)' },
-      { from: 20,  to: 40,  color: 'var(--red)' }
-    ];
-    ZONES.forEach(z => {
-      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d', arcPath(angleForCents(z.from), angleForCents(z.to)));
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', z.color);
-      path.setAttribute('stroke-width', ZONE_WIDTH);
-      path.setAttribute('stroke-linecap', 'butt');
-      zonesGroup.appendChild(path);
-    });
+    function drawZones() {
+      const tolerance = parseFloat(toleranceInput.value) || 5;
+      zonesGroup.innerHTML = '';
+      const zones = [
+        { from: -40, to: -20, color: 'var(--red)' },
+        { from: -20, to: -tolerance, color: 'var(--yellow)' },
+        { from: -tolerance, to: tolerance, color: 'var(--green)' },
+        { from: tolerance, to: 20, color: 'var(--yellow)' },
+        { from: 20, to: 40, color: 'var(--red)' }
+      ];
+      zones.forEach(z => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d', arcPath(angleForCents(z.from), angleForCents(z.to)));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', z.color);
+        path.setAttribute('stroke-width', ZONE_WIDTH);
+        path.setAttribute('stroke-linecap', 'butt');
+        zonesGroup.appendChild(path);
+      });
+    }
+    drawZones();
 
     const TICKS = [-30, -20, -10, -5, 0, 5, 10, 20, 30];
     TICKS.forEach(c => {
@@ -519,52 +544,7 @@
         const name = entry.shownName || midiToNoteName(entry.midi);
         const y = noteYFromName(name);
         const pos = notePosition(name);
-        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-        if (interactive) {
-          g.style.cursor = 'pointer';
-          g.addEventListener('mouseenter', () => onHover && onHover(entry, g));
-          g.addEventListener('mouseleave', () => onHover && onHover(null, g));
-        }
-
-        // ledger lines: only when the note sits on a line position outside the staff
-        if (pos % 2 === 0 && (pos < 2 || pos > 10)) {
-          const ll = document.createElementNS('http://www.w3.org/2000/svg','line');
-          ll.setAttribute('x1', x - 12); ll.setAttribute('y1', y);
-          ll.setAttribute('x2', x + 12); ll.setAttribute('y2', y);
-          ll.setAttribute('stroke', '#bbb');
-          ll.setAttribute('stroke-width', 1.5);
-          g.appendChild(ll);
-        }
-
-        // note head (ellipse)
-        const ellipse = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
-        ellipse.setAttribute('cx', x); ellipse.setAttribute('cy', y);
-        ellipse.setAttribute('rx', 7.5); ellipse.setAttribute('ry', 5.5);
-        ellipse.setAttribute('fill', entry.color);
-        ellipse.setAttribute('transform', `rotate(-15, ${x}, ${y})`);
-        g.appendChild(ellipse);
-
-        // stem (down for high notes, up for low notes)
-        const stemUp = y > 98;
-        const stemX = x + (stemUp ? -7 : 7);
-        const stemEndY = y + (stemUp ? 35 : -35);
-        const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
-        stem.setAttribute('x1', stemX); stem.setAttribute('y1', y);
-        stem.setAttribute('x2', stemX); stem.setAttribute('y2', stemEndY);
-        stem.setAttribute('stroke', entry.color);
-        stem.setAttribute('stroke-width', 2);
-        g.appendChild(stem);
-
-        // accidental
-        if (entry.accidental) {
-          const acc = document.createElementNS('http://www.w3.org/2000/svg','text');
-          acc.setAttribute('x', x - 22); acc.setAttribute('y', y + 5);
-          acc.setAttribute('font-size', '16');
-          acc.setAttribute('fill', entry.color);
-          acc.textContent = entry.accidental;
-          g.appendChild(acc);
-        }
-
+        const g = createNoteGroup(entry, x, y, pos, interactive, onHover);
         svg.appendChild(g);
       });
     }
@@ -586,56 +566,6 @@
 
       svg.setAttribute('viewBox', `0 0 ${lineWidth} ${height}`);
       svg.innerHTML = '';
-
-      function renderNoteOnGroup(group, entry, x, y, pos) {
-        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-        if (interactive) {
-          g.style.cursor = 'pointer';
-          g.addEventListener('mouseenter', () => onHover && onHover(entry, g));
-          g.addEventListener('mouseleave', () => onHover && onHover(null, g));
-        }
-
-        // ledger lines
-        if (pos % 2 === 0 && (pos < 2 || pos > 10)) {
-          const ll = document.createElementNS('http://www.w3.org/2000/svg','line');
-          ll.setAttribute('x1', x - 12); ll.setAttribute('y1', y);
-          ll.setAttribute('x2', x + 12); ll.setAttribute('y2', y);
-          ll.setAttribute('stroke', '#bbb');
-          ll.setAttribute('stroke-width', 1.5);
-          g.appendChild(ll);
-        }
-
-        // note head
-        const ellipse = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
-        ellipse.setAttribute('cx', x); ellipse.setAttribute('cy', y);
-        ellipse.setAttribute('rx', 7.5); ellipse.setAttribute('ry', 5.5);
-        ellipse.setAttribute('fill', entry.color);
-        ellipse.setAttribute('transform', `rotate(-15, ${x}, ${y})`);
-        g.appendChild(ellipse);
-
-        // stem
-        const stemUp = y > 98;
-        const stemX = x + (stemUp ? -7 : 7);
-        const stemEndY = y + (stemUp ? 35 : -35);
-        const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
-        stem.setAttribute('x1', stemX); stem.setAttribute('y1', y);
-        stem.setAttribute('x2', stemX); stem.setAttribute('y2', stemEndY);
-        stem.setAttribute('stroke', entry.color);
-        stem.setAttribute('stroke-width', 2);
-        g.appendChild(stem);
-
-        // accidental
-        if (entry.accidental) {
-          const acc = document.createElementNS('http://www.w3.org/2000/svg','text');
-          acc.setAttribute('x', x - 22); acc.setAttribute('y', y + 5);
-          acc.setAttribute('font-size', '16');
-          acc.setAttribute('fill', entry.color);
-          acc.textContent = entry.accidental;
-          g.appendChild(acc);
-        }
-
-        group.appendChild(g);
-      }
 
       for (let line = 0; line < lines; line++) {
         const offsetY = line * lineHeight;
@@ -668,7 +598,7 @@
           const name = entry.shownName || midiToNoteName(entry.midi);
           const y = noteYFromName(name);
           const pos = notePosition(name);
-          renderNoteOnGroup(group, entry, x, y, pos);
+          group.appendChild(createNoteGroup(entry, x, y, pos, interactive, onHover));
         });
 
         svg.appendChild(group);
@@ -679,6 +609,71 @@
       if (name.includes('#')) return '♯';
       if (name.includes('b')) return '♭';
       return '';
+    }
+
+    function createNoteGroup(entry, x, y, pos, interactive, onHover) {
+      const tolerance = parseFloat(toleranceInput.value) || 5;
+      const color = getMeterColor(entry.cents, tolerance);
+      const outOfTune = Math.abs(entry.cents) > tolerance;
+      const sign = entry.cents > 0 ? '+' : '-';
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      if (interactive) {
+        g.style.cursor = 'pointer';
+        g.addEventListener('mouseenter', () => onHover && onHover(entry, g));
+        g.addEventListener('mouseleave', () => onHover && onHover(null, g));
+      }
+
+      // ledger lines
+      if (pos % 2 === 0 && (pos < 2 || pos > 10)) {
+        const ll = document.createElementNS('http://www.w3.org/2000/svg','line');
+        ll.setAttribute('x1', x - 12); ll.setAttribute('y1', y);
+        ll.setAttribute('x2', x + 12); ll.setAttribute('y2', y);
+        ll.setAttribute('stroke', '#bbb');
+        ll.setAttribute('stroke-width', 1.5);
+        g.appendChild(ll);
+      }
+
+      // note head
+      const ellipse = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+      ellipse.setAttribute('cx', x); ellipse.setAttribute('cy', y);
+      ellipse.setAttribute('rx', 7.5); ellipse.setAttribute('ry', 5.5);
+      ellipse.setAttribute('fill', color);
+      ellipse.setAttribute('transform', `rotate(-15, ${x}, ${y})`);
+      g.appendChild(ellipse);
+
+// stem
+      const stemUp = y < 98;
+      const stemX = x + (stemUp ? -7 : 7);
+      const stemEndY = y + (stemUp ? 35 : -35);
+      const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
+      stem.setAttribute('x1', stemX); stem.setAttribute('y1', y);
+      stem.setAttribute('x2', stemX); stem.setAttribute('y2', stemEndY);
+      stem.setAttribute('stroke', color);
+      stem.setAttribute('stroke-width', 2);
+      g.appendChild(stem);
+
+      // accidental
+      if (entry.accidental) {
+        const acc = document.createElementNS('http://www.w3.org/2000/svg','text');
+        acc.setAttribute('x', x - 22); acc.setAttribute('y', y + 5);
+        acc.setAttribute('font-size', '16');
+        acc.setAttribute('fill', color);
+        acc.textContent = entry.accidental;
+        g.appendChild(acc);
+      }
+
+      // +/- indicator for out-of-tune notes
+      if (outOfTune) {
+        const indic = document.createElementNS('http://www.w3.org/2000/svg','text');
+        indic.setAttribute('x', x + 8); indic.setAttribute('y', y - 10);
+        indic.setAttribute('font-size', '12');
+        indic.setAttribute('font-weight', 'bold');
+        indic.setAttribute('fill', color);
+        indic.textContent = sign;
+        g.appendChild(indic);
+      }
+
+      return g;
     }
 
     // Pitch detection (autocorrelation)
@@ -697,12 +692,19 @@
 
     const sensitivitySelect = document.getElementById('sensitivity');
     function updateSensitivity() {
-      const s = SENSITIVITY_SETTINGS[sensitivitySelect.value] || SENSITIVITY_SETTINGS.medium;
+      const val = sensitivitySelect.value;
+      if (val === 'custom') return; // preserve calibrated gate
+      const s = SENSITIVITY_SETTINGS[val] || SENSITIVITY_SETTINGS.medium;
       MIN_RMS = s.MIN_RMS;
       HOLD_THRESHOLD = s.HOLD_THRESHOLD;
     }
     updateSensitivity();
     sensitivitySelect.addEventListener('change', updateSensitivity);
+
+    toleranceInput.addEventListener('change', () => {
+      drawZones();
+      renderNotes();
+    });
 
     function autoCorrelate(buf, sampleRate) {
       let rms = 0;
@@ -739,10 +741,6 @@
       return sampleRate / T0;
     }
 
-    const startBtn = document.getElementById('startBtn');
-    const scaleSelect = document.getElementById('scale');
-    const speedInput = document.getElementById('speed');
-    const toleranceInput = document.getElementById('tolerance');
     const needle = document.getElementById('needle');
     const currentNoteEl = document.getElementById('currentNote');
     const centsTextEl = document.getElementById('centsText');
@@ -761,18 +759,7 @@
         const noteInfo = nearestScaleNote(midi, scaleKey);
         const absCents = Math.abs(noteInfo.cents);
         const tolerance = parseFloat(toleranceInput.value) || 5;
-
-        // Meter color: green center, yellow middle, red outer
-        let meterColor;
-        if (absCents <= 5) meterColor = 'var(--green)';
-        else if (absCents <= 20) meterColor = 'var(--yellow)';
-        else meterColor = 'var(--red)';
-
-        // Notation color: green in tune, red sharp, blue flat
-        let noteColor;
-        if (absCents <= tolerance) noteColor = 'var(--green)';
-        else if (noteInfo.cents > tolerance) noteColor = 'var(--red)';
-        else noteColor = 'var(--blue)';
+        const meterColor = getMeterColor(noteInfo.cents, tolerance);
 
         // Smooth note: only add when stable
         if (lastNote && lastNote.name === noteInfo.name && Math.abs(lastNote.cents - noteInfo.cents) < 15) {
@@ -787,7 +774,6 @@
           const entry = {
             midi: noteInfo.midi,
             cents: noteInfo.cents,
-            color: noteColor,
             accidental: accidentalSymbol(shownName),
             shownName
           };
@@ -993,6 +979,75 @@
         update();
       } catch (err) {
         alert('Microphone access required: ' + err.message);
+      }
+    });
+
+    // Calibration: measure background noise RMS to set a custom noise gate
+    let isCalibrating = false;
+    calibrateBtn.addEventListener('click', async () => {
+      if (isRunning) {
+        alert('Please stop the current practice session before calibrating.');
+        return;
+      }
+      if (isCalibrating) return;
+      isCalibrating = true;
+      calibrateBtn.textContent = 'Calibrating…';
+      calibrateBtn.disabled = true;
+      startBtn.disabled = true;
+
+      let localAudioCtx, localStream, localAnalyser;
+      try {
+        localAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: {
+          echoCancellation: false, autoGainControl: false, noiseSuppression: false
+        }});
+        const localSource = localAudioCtx.createMediaStreamSource(localStream);
+        localAnalyser = localAudioCtx.createAnalyser();
+        localAnalyser.fftSize = buflen;
+        localSource.connect(localAnalyser);
+
+        const samples = [];
+        const sampleBuf = new Float32Array(localAnalyser.fftSize);
+        const sampleCount = 120; // ~2 seconds at 60 fps
+        let frame = 0;
+
+        await new Promise(resolve => {
+          function measure() {
+            if (frame >= sampleCount) {
+              resolve();
+              return;
+            }
+            localAnalyser.getFloatTimeDomainData(sampleBuf);
+            let sum = 0;
+            for (let i = 0; i < sampleBuf.length; i++) sum += sampleBuf[i] * sampleBuf[i];
+            samples.push(Math.sqrt(sum / sampleBuf.length));
+            frame++;
+            requestAnimationFrame(measure);
+          }
+          measure();
+        });
+
+        // Sort and use the 90th percentile to ignore brief spikes
+        samples.sort((a, b) => a - b);
+        const percentile90 = samples[Math.floor(samples.length * 0.9)];
+        const noiseFloor = samples.reduce((a, b) => a + b, 0) / samples.length;
+        // Set gate well above the measured floor (3x average or 1.5x 90th percentile, whichever is higher)
+        const calibratedGate = Math.max(0.0015, Math.max(noiseFloor * 3, percentile90 * 1.5));
+        MIN_RMS = calibratedGate;
+
+        // Update sensitivity select to a custom display if desired
+        sensitivitySelect.value = 'custom';
+
+        alert(`Calibration complete.\nNoise floor: ${noiseFloor.toFixed(5)}\nNoise gate set to: ${MIN_RMS.toFixed(5)}`);
+      } catch (err) {
+        alert('Microphone access required for calibration: ' + err.message);
+      } finally {
+        if (localAudioCtx) localAudioCtx.close();
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        isCalibrating = false;
+        calibrateBtn.textContent = 'Calibrate';
+        calibrateBtn.disabled = false;
+        startBtn.disabled = false;
       }
     });
   </script>
